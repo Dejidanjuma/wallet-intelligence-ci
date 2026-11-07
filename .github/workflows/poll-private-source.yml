@@ -2,7 +2,7 @@ name: Poll private Wallet Intelligence source
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 permissions:
