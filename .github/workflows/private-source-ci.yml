@@ -2,6 +2,8 @@ name: Private Wallet Intelligence CI
 
 on:
   workflow_dispatch:
+  repository_dispatch:
+    types: [wi-source-updated]
 
 permissions:
   contents: read
@@ -89,12 +91,3 @@ jobs:
           echo "Failed stages: $failures"
           rm -f /tmp/wi-*.log /tmp/wi-lint.json /tmp/wi-vitest.json
           if [ "$failures" -gt 0 ]; then exit 1; fi
-
-      - name: Export regenerated lockfile only
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: wi-regenerated-lockfile
-          path: private-source/package-lock.json
-          if-no-files-found: ignore
-          retention-days: 1
