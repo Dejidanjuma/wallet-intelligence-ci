@@ -61,7 +61,7 @@ jobs:
             console.log("Typecheck summary:",JSON.stringify({diagnostics}));
           '
 
-          run_logged "Unit tests" /tmp/wi-tests.log npm test -- --reporter=json --outputFile=/tmp/wi-vitest.json
+          run_logged "Unit tests" /tmp/wi-tests.log npm test -- --pool=threads --maxWorkers=2 --minWorkers=1 --reporter=json --outputFile=/tmp/wi-vitest.json
           if [ -s /tmp/wi-vitest.json ]; then
             node -e 'const fs=require("fs");try{const d=JSON.parse(fs.readFileSync("/tmp/wi-vitest.json","utf8"));const files=d.testResults||[];let p=0,f=0;const failed=[];for(const x of files)for(const t of x.assertionResults||[]){if(t.status==="passed")p++;if(t.status==="failed"){f++;failed.push({file:String(x.name||"").split("/").pop(),test:t.fullName||t.title||"unnamed"});}}console.log("Vitest summary:",JSON.stringify({files:files.length,passed:p,failed:f,failedTests:failed.slice(0,10)}));}catch{console.log("Vitest report parse failed");}'
           fi
