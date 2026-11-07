@@ -49,15 +49,76 @@ jobs:
             fi
           }
 
+          summarize_lint() {
+            if [ -s /tmp/wi-lint.json ]; then
+              node -e '
+                const fs=require("fs"); const d=JSON.parse(fs.readFileSync("/tmp/wi-lint.json","utf8").replace(/^\\uFEFF/,""));
+                const a={errors:0,warnings:0,rules:{}};
+                for(const f of d){a.errors+=f.errorCount||0;a.warnings+=f.warningCount||0;for(const m of f.messages||[])if(m.ruleId)a.rules[m.ruleId]=(a.rules[m.ruleId]||0)+1;}
+                console.log("Lint summary:",JSON.stringify(a));
+              '
+            fi
+          }
+
+          summarize_tsc() {
+            node -e '
+              const fs=require("fs"),s=fs.readFileSync("/tmp/wi-ci-private.log","utf8");
+              const codes={}; for(const m of s.matchAll(/\\b(TS\\d+):/g))codes[m[1]]=(codes[m[1]]||0)+1;
+              console.log("Typecheck summary:",JSON.stringify({diagnosticCount:Object.values(codes).reduce((a,b)=>a+b,0),codes}));
+            '
+          }
+
+          summarize_tests() {
+            if [ -s /tmp/wi-vitest.json ]; then
+              node -e '
+                const fs=require("fs"),d=JSON.parse(fs.readFileSync("/tmp/wi-vitest.json","utf8"));
+                const files=d.testResults||[];let passed=0,failed=0,skipped=0;
+                for(const f of files)for(const t of f.assertionResults||[]){if(t.status==="passed")passed++;else if(t.status==="failed")failed++;else skipped++;}
+                console.log("Vitest summary:",JSON.stringify({files:files.length,passed,failed,skipped}));
+              '
+            else
+              echo "Vitest summary: JSON report unavailable; failure output withheld."
+            fi
+          }
+
+          summarize_build() {
+            node -e '
+              const fs=require("fs"),s=fs.readFileSync("/tmp/wi-ci-private.log","utf8");
+              const patterns=[/Module not found/g,/Cannot find module/g,/Type error/g,/Error occurred prerendering/g,/Failed to compile/g,/out of memory/gi];
+              const counts={};for(const p of patterns){const m=s.match(p)||[];if(m.length)counts[p.source]=m.length;}
+              console.log("Build summary:",JSON.stringify({errorMarkers:counts,logLines:s.split(/\\r?\\n/).filter(x=>/\\b(error|Error|failed|Failed)\\b/.test(x)).length}));
+            '
+          }
+
           run_stage "Lockfile regeneration" npm install --package-lock-only --ignore-scripts --no-audit --no-fund
           run_stage "Dependency installation" npm ci --no-audit --no-fund
-          run_stage "Lint" npm run lint
-          run_stage "Typecheck" npm run typecheck
-          run_stage "Unit tests" npm test
-          run_stage "Production build" npm run build
+
+          if npm run lint -- --format json --output-file /tmp/wi-lint.json > /tmp/wi-ci-private.log 2>&1; then
+            echo "Lint: PASS"
+          else
+            code=$?; echo "Lint: FAIL (exit $code)"; failures=$((failures + 1)); summarize_lint
+          fi
+
+          if npm run typecheck > /tmp/wi-ci-private.log 2>&1; then
+            echo "Typecheck: PASS"
+          else
+            code=$?; echo "Typecheck: FAIL (exit $code)"; failures=$((failures + 1)); summarize_tsc
+          fi
+
+          if npm test -- --reporter=json --outputFile=/tmp/wi-vitest.json > /tmp/wi-ci-private.log 2>&1; then
+            echo "Unit tests: PASS"
+          else
+            code=$?; echo "Unit tests: FAIL (exit $code)"; failures=$((failures + 1)); summarize_tests
+          fi
+
+          if npm run build > /tmp/wi-ci-private.log 2>&1; then
+            echo "Production build: PASS"
+          else
+            code=$?; echo "Production build: FAIL (exit $code)"; failures=$((failures + 1)); summarize_build
+          fi
 
           echo "Failed stages: $failures"
-          rm -f /tmp/wi-ci-private.log
+          rm -f /tmp/wi-ci-private.log /tmp/wi-lint.json /tmp/wi-vitest.json
           if [ "$failures" -gt 0 ]; then exit 1; fi
 
       - name: Export regenerated lockfile only
