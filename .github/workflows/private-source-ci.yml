@@ -84,3 +84,12 @@ jobs:
           run_stage "Unit tests" npm test
           run_stage "Production build" npm run build
           rm -f /tmp/wi-ci-private.log /tmp/wi-lint.json
+
+      - name: Export regenerated lockfile only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wi-regenerated-lockfile
+          path: private-source/package-lock.json
+          if-no-files-found: ignore
+          retention-days: 1
