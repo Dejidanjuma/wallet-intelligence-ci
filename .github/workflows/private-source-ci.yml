@@ -48,6 +48,7 @@ jobs:
             fi
           }
 
+          run_stage "Lockfile regeneration" npm install --package-lock-only --ignore-scripts --no-audit --no-fund
           run_stage "Dependency installation" npm ci --no-audit --no-fund
 
           if npm run lint -- --format json --output-file /tmp/wi-lint.json > /tmp/wi-ci-private.log 2>&1; then
