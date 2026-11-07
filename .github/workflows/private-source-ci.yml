@@ -37,7 +37,6 @@ jobs:
         run: |
           set -u
           cd private-source
-
           set +e
           failures=0
           run_logged() {
@@ -56,37 +55,35 @@ jobs:
           fi
 
           run_logged "Typecheck" /tmp/wi-tsc.log npm run typecheck -- --pretty false
-          node -e '
-            const fs=require("fs"),s=fs.readFileSync("/tmp/wi-tsc.log","utf8");
-            const lines=s.split(String.fromCharCode(10));
-            const diagnostics=lines.filter(x=>x.includes("error TS")).slice(0,8);
-            console.log("Typecheck summary:",JSON.stringify({diagnostics}));
-          '
+          node -e 'const fs=require("fs"),s=fs.readFileSync("/tmp/wi-tsc.log","utf8");console.log("Typecheck summary:",JSON.stringify({diagnostics:s.split(String.fromCharCode(10)).filter(x=>x.includes("error TS")).slice(0,8)}));'
 
           run_logged "Unit tests" /tmp/wi-tests.log npm test -- --pool=forks --maxWorkers=1 --no-file-parallelism --reporter=json --outputFile=/tmp/wi-vitest.json
           if [ -s /tmp/wi-vitest.json ]; then
-            node -e 'const fs=require("fs");try{const d=JSON.parse(fs.readFileSync("/tmp/wi-vitest.json","utf8"));const files=d.testResults||[];let p=0,f=0;const failed=[];const suiteIssues=[];for(const x of files){for(const t of x.assertionResults||[]){if(t.status==="passed")p++;if(t.status==="failed"){f++;failed.push({file:String(x.name||"").split("/").pop(),test:t.fullName||t.title||"unnamed"});}}if(x.status!=="passed")suiteIssues.push({file:String(x.name||"").split("/").pop(),status:x.status,assertionCount:(x.assertionResults||[]).length});}console.log("Vitest summary:",JSON.stringify({success:d.success,numPassedTests:d.numPassedTests,numFailedTests:d.numFailedTests,numFailedSuites:d.numFailedSuites,numTotalTests:d.numTotalTests,files:files.length,passed:p,failed:f,failedTests:failed.slice(0,10),suiteIssues:suiteIssues.slice(0,10)}));}catch{console.log("Vitest report parse failed");}'
+            node -e '
+              const fs=require("fs");
+              const clean=v=>String(v??"").replace(/(gh[pousr]_[A-Za-z0-9_]{20,}|Bearer\s+\S+|https?:\/\/[^\s]+\?[^\s]+)/g,"[redacted]").replace(/\/home\/runner\/work\/[^\s:]*/g,"[private-runner-path]").slice(0,700);
+              try {
+                const d=JSON.parse(fs.readFileSync("/tmp/wi-vitest.json","utf8"));
+                const files=d.testResults||[];let p=0,f=0;const failed=[];const suiteIssues=[];
+                for(const x of files){
+                  for(const t of x.assertionResults||[]){if(t.status==="passed")p++;if(t.status==="failed"){f++;failed.push({file:clean(x.name).split("/").pop(),test:clean(t.fullName||t.title),messages:(t.failureMessages||[]).map(clean).slice(0,2)});}}
+                  if(x.status!=="passed")suiteIssues.push({file:clean(x.name).split("/").pop(),status:x.status,assertionCount:(x.assertionResults||[]).length,error:clean(x.message||x.failureMessage||x.error),details:(x.assertionResults||[]).filter(t=>t.status==="failed").flatMap(t=>t.failureMessages||[]).map(clean).slice(0,3)});
+                }
+                console.log("Vitest summary:",JSON.stringify({success:d.success,numPassedTests:d.numPassedTests,numFailedTests:d.numFailedTests,numFailedSuites:d.numFailedSuites,numTotalTests:d.numTotalTests,files:files.length,passed:p,failed:f,failedTests:failed.slice(0,10),suiteIssues:suiteIssues.slice(0,12),topLevelErrors:(d.errors||[]).map(e=>({name:clean(e.name),message:clean(e.message),stack:clean(e.stack)})).slice(0,5)}));
+              } catch(e) { console.log("Vitest report parse failed:",clean(e.message)); }
+            '
           else
             echo "Vitest report: MISSING"
           fi
           node -e '
             const fs=require("fs"),s=fs.readFileSync("/tmp/wi-tests.log","utf8");
-            const markers=["Unhandled","unhandled","worker","pool","SIGTERM","SIGKILL","Error","error","failed","Failed","Cannot find"];
-            const counts={};for(const m of markers){const n=s.split(m).length-1;if(n)counts[m]=n;}
+            const clean=x=>String(x).replace(/(gh[pousr]_[A-Za-z0-9_]{20,}|Bearer\s+\S+|https?:\/\/[^\s]+\?[^\s]+)/g,"[redacted]").replace(/\/home\/runner\/work\/[^\s:]*/g,"[private-runner-path]").slice(0,500);
             const lines=s.split(String.fromCharCode(10));
-            const safe=lines.slice(-40).map(x=>x.replace(/(gh[pousr]_[A-Za-z0-9_]{20,}|Bearer\s+\S+|https?:\/\/[^\s]+\?[^\s]+)/g,"[redacted]").replace(/\/home\/runner\/work\/[^\s:]*/g,"[private-runner-path]").slice(0,300));
-            console.log("Vitest process diagnostics:",JSON.stringify({logBytes:Buffer.byteLength(s),markerCounts:counts,hasFinalSummary:/Test Files|Tests\s/.test(s),tail:safe}));
+            console.log("Vitest process diagnostics:",JSON.stringify({logBytes:Buffer.byteLength(s),tail:lines.slice(-60).map(clean)}));
           '
 
           run_logged "Production build" /tmp/wi-build.log npm run build
-          node -e '
-            const fs=require("fs"),s=fs.readFileSync("/tmp/wi-build.log","utf8");
-            const lines=s.split(String.fromCharCode(10));
-            const markers=["Module not found","Cannot find module","Type error","Error occurred prerendering","Failed to compile","out of memory","SyntaxError","ReferenceError"];
-            const found={};for(const m of markers){const n=s.split(m).length-1;if(n)found[m]=n;}
-            const errorLines=lines.filter(x=>/error|Error|failed|Failed|Type error|Module not found/.test(x)).slice(0,8);
-            console.log("Build summary:",JSON.stringify({errorMarkers:found,errorLines}));
-          '
+          node -e 'const fs=require("fs"),s=fs.readFileSync("/tmp/wi-build.log","utf8");const lines=s.split(String.fromCharCode(10));console.log("Build summary:",JSON.stringify({errorLines:lines.filter(x=>/error|Error|failed|Failed|Type error|Module not found/.test(x)).slice(0,8)}));'
 
           echo "Failed stages: $failures"
           rm -f /tmp/wi-*.log /tmp/wi-lint.json /tmp/wi-vitest.json
