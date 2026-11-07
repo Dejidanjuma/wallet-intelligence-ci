@@ -1,0 +1,54 @@
+name: Private Wallet Intelligence CI
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: private-wallet-intelligence-ci
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout private source (ephemeral runner only)
+        uses: actions/checkout@v4
+        with:
+          repository: Dejidanjuma/wallet-intelligence
+          ref: feat/wallet-scan-profit-reconciliation
+          token: ${{ secrets.WI_READONLY_TOKEN }}
+          path: private-source
+          persist-credentials: false
+          clean: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install and verify without publishing private logs
+        shell: bash
+        run: |
+          set -u
+          cd private-source
+          run_stage() {
+            label="$1"
+            shift
+            if "$@" > /tmp/wi-ci-private.log 2>&1; then
+              echo "$label: PASS"
+            else
+              code=$?
+              echo "$label: FAIL (exit $code; private output withheld)"
+              exit "$code"
+            fi
+          }
+          run_stage "Dependency installation" npm ci --no-audit --no-fund
+          run_stage "Lint" npm run lint
+          run_stage "Typecheck" npm run typecheck
+          run_stage "Unit tests" npm test
+          run_stage "Production build" npm run build
+          rm -f /tmp/wi-ci-private.log
