@@ -58,7 +58,8 @@ jobs:
             if node -e '
               const fs = require("fs");
               try {
-                const data = JSON.parse(fs.readFileSync("/tmp/wi-lint.json", "utf8"));
+                const raw = fs.readFileSync("/tmp/wi-lint.json", "utf8").replace(/^\\uFEFF/, "");
+                const data = JSON.parse(raw);
                 const counts = data.reduce((a, f) => {
                   a.errors += f.errorCount || 0;
                   a.warnings += f.warningCount || 0;
@@ -68,7 +69,8 @@ jobs:
                 }, { errors: 0, warnings: 0, fatal: 0, rules: {} });
                 console.log("Lint summary:", JSON.stringify(counts));
               } catch {
-                console.log("Lint diagnostic: ESLint configuration or CLI startup failed; detailed private output withheld.");
+                const raw = fs.readFileSync("/tmp/wi-lint.json", "utf8").replace(/^\\uFEFF/, "");
+                console.log("Lint diagnostic: ESLint output was not valid JSON (" + (raw.trim().startsWith("{") || raw.trim().startsWith("[") ? "malformed JSON" : "non-JSON startup output") + "); detailed private output withheld.");
               }
             '; then :; fi
             # Only expose a short, sanitized startup diagnostic if ESLint did not produce JSON.
