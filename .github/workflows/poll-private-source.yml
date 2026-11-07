@@ -1,0 +1,74 @@
+name: Poll private Wallet Intelligence source
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wi-private-source-poller
+  cancel-in-progress: true
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout public CI controller
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Detect and dispatch a new private commit
+        env:
+          WI_READONLY_TOKEN: ${{ secrets.WI_READONLY_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          latest_sha="$(curl -fsSL \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${WI_READONLY_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/Dejidanjuma/wallet-intelligence/commits/feat/wallet-scan-profit-reconciliation" \
+            | jq -r '.sha')"
+
+          if [[ ! "$latest_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Could not resolve the private branch commit SHA."
+            exit 1
+          fi
+
+          marker=".ci/last-seen-private-sha"
+          previous_sha=""
+          if [[ -f "$marker" ]]; then previous_sha="$(tr -d '[:space:]' < "$marker")"; fi
+
+          if [[ "$latest_sha" == "$previous_sha" ]]; then
+            echo "No new private source commit. Nothing to dispatch."
+            exit 0
+          fi
+
+          echo "New private source commit detected: $latest_sha"
+
+          payload="$(jq -n --arg sha "$latest_sha" \
+            '{event_type:"wi-source-updated",client_payload:{sha:$sha}}')"
+
+          curl -fsSL -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GH_REPOSITORY}/dispatches" \
+            -d "$payload"
+
+          mkdir -p .ci
+          printf '%s\n' "$latest_sha" > "$marker"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$marker"
+          git commit -m "ci: record dispatched private source commit"
+          git push
+          echo "Dispatched CI for private commit $latest_sha"
