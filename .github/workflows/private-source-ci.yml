@@ -74,8 +74,8 @@ jobs:
             const markers=["Unhandled","unhandled","worker","pool","SIGTERM","SIGKILL","Error","error","failed","Failed","Cannot find"];
             const counts={};for(const m of markers){const n=s.split(m).length-1;if(n)counts[m]=n;}
             const lines=s.split(String.fromCharCode(10));
-            const relevant=lines.filter(x=>/worker|pool|spawn|thread|fork|SIGTERM|SIGKILL|error|Error|failed|Failed/i.test(x)).slice(-12).map(x=>x.replace(/(gh[pousr]_[A-Za-z0-9_]{20,}|Bearer\s+\S+|https?:\/\/[^\s]+\?[^\s]+)/g,"[redacted]").slice(0,240));
-            console.log("Vitest process diagnostics:",JSON.stringify({logBytes:Buffer.byteLength(s),markerCounts:counts,hasFinalSummary:/Test Files|Tests\s/.test(s),relevant}));
+            const safe=lines.slice(-40).map(x=>x.replace(/(gh[pousr]_[A-Za-z0-9_]{20,}|Bearer\s+\S+|https?:\/\/[^\s]+\?[^\s]+)/g,"[redacted]").replace(/\/home\/runner\/work\/[^\s:]*/g,"[private-runner-path]").slice(0,300));
+            console.log("Vitest process diagnostics:",JSON.stringify({logBytes:Buffer.byteLength(s),markerCounts:counts,hasFinalSummary:/Test Files|Tests\s/.test(s),tail:safe}));
           '
 
           run_logged "Production build" /tmp/wi-build.log npm run build
