@@ -55,31 +55,30 @@ jobs:
           else
             code=$?
             echo "Lint: FAIL (exit $code)"
-            if node -e '
-              const fs = require("fs");
-              try {
-                const raw = fs.readFileSync("/tmp/wi-lint.json", "utf8").replace(/^\\uFEFF/, "");
-                const data = JSON.parse(raw);
-                const counts = data.reduce((a, f) => {
-                  a.errors += f.errorCount || 0;
-                  a.warnings += f.warningCount || 0;
-                  a.fatal += f.fatalErrorCount || 0;
-                  for (const m of f.messages || []) if (m.ruleId) a.rules[m.ruleId] = (a.rules[m.ruleId] || 0) + 1;
-                  return a;
-                }, { errors: 0, warnings: 0, fatal: 0, rules: {} });
-                console.log("Lint summary:", JSON.stringify(counts));
-              } catch {
-                const raw = fs.readFileSync("/tmp/wi-lint.json", "utf8").replace(/^\\uFEFF/, "");
-                console.log("Lint diagnostic: ESLint output was not valid JSON (" + (raw.trim().startsWith("{") || raw.trim().startsWith("[") ? "malformed JSON" : "non-JSON startup output") + "); detailed private output withheld.");
-              }
-            '; then :; fi
-            # Only expose a short, sanitized startup diagnostic if ESLint did not produce JSON.
-            if [ ! -s /tmp/wi-lint.json ]; then
-              sed -n '1,4p' /tmp/wi-ci-private.log | sed -E 's#\/home\/runner\/[^ ]+#<runner-path>#g; s#private-source\/[^ ]+#<private-path>#g'
+            if [ -s /tmp/wi-lint.json ]; then
+              node -e '
+                const fs = require("fs");
+                try {
+                  const raw = fs.readFileSync("/tmp/wi-lint.json", "utf8").replace(/^\\uFEFF/, "");
+                  const data = JSON.parse(raw);
+                  const counts = data.reduce((a, f) => {
+                    a.errors += f.errorCount || 0;
+                    a.warnings += f.warningCount || 0;
+                    a.fatal += f.fatalErrorCount || 0;
+                    for (const m of f.messages || []) if (m.ruleId) a.rules[m.ruleId] = (a.rules[m.ruleId] || 0) + 1;
+                    return a;
+                  }, { errors: 0, warnings: 0, fatal: 0, rules: {} });
+                  console.log("Lint summary:", JSON.stringify(counts));
+                } catch {
+                  console.log("Lint diagnostic: report exists but could not be parsed; private details withheld.");
+                }
+              '
+            else
+              echo "Lint diagnostic: ESLint did not create a JSON report; filtered startup details follow."
+              grep -E '(^|[[:space:]])(ESLint:|Error:|TypeError:|ReferenceError:|SyntaxError:|ConfigError:|Cannot find|Could not|Failed to|A config object)' /tmp/wi-ci-private.log | head -n 4 | sed -E 's#\/home\/runner\/[^ ]+#<runner-path>#g; s#private-source\/[^ ]+#<private-path>#g' || true
             fi
             exit "$code"
           fi
-
           run_stage "Typecheck" npm run typecheck
           run_stage "Unit tests" npm test
           run_stage "Production build" npm run build
