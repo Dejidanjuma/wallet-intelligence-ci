@@ -56,14 +56,9 @@ jobs:
           run_logged "Typecheck" /tmp/wi-tsc.log npm run typecheck -- --pretty false
           node -e '
             const fs=require("fs"),s=fs.readFileSync("/tmp/wi-tsc.log","utf8");
-            const codes={},files={};
-            for(const line of s.split(/\\r?\\n/)){
-              const m=line.match(/error (TS[0-9]+):/);
-              if(m) codes[m[1]]=(codes[m[1]]||0)+1;
-              const f=line.match(/(?:^|[\\/])([^\\/\\s()]+\\.tsx?):[0-9]+:[0-9]+/);
-              if(f) files[f[1]]=(files[f[1]]||0)+1;
-            }
-            const diagnostics=s.split(/\\r?\\n/).filter(x=>/error TS[0-9]+:/.test(x)).map(x=>x.replace(/^.*?((?:src|tests?)\\/[^(: ]+\\([0-9]+,[0-9]+\\): error TS[0-9]+:)/,"$1")).slice(0,8);console.log("Typecheck summary:",JSON.stringify({codes,files:Object.entries(files).slice(0,20),diagnostics}));
+            const lines=s.split(String.fromCharCode(10));
+            const diagnostics=lines.filter(x=>x.includes("error TS")).slice(0,8);
+            console.log("Typecheck summary:",JSON.stringify({diagnostics}));
           '
 
           run_logged "Unit tests" /tmp/wi-tests.log npm test -- --reporter=json --outputFile=/tmp/wi-vitest.json
@@ -74,10 +69,11 @@ jobs:
           run_logged "Production build" /tmp/wi-build.log npm run build
           node -e '
             const fs=require("fs"),s=fs.readFileSync("/tmp/wi-build.log","utf8");
+            const lines=s.split(String.fromCharCode(10));
             const markers=["Module not found","Cannot find module","Type error","Error occurred prerendering","Failed to compile","out of memory","SyntaxError","ReferenceError"];
             const found={};for(const m of markers){const n=s.split(m).length-1;if(n)found[m]=n;}
-            const files={};for(const line of s.split(/\\r?\\n/)){const m=line.match(/(?:^|[\\/])([^\\/\\s()]+\\.(?:ts|tsx|js|jsx|css))/);if(m)files[m[1]]=1;}
-            const errorLines=s.split(/\\r?\\n/).filter(x=>/error|Error|failed|Failed|Type error|Module not found/.test(x)).map(x=>x.replace(/\\x1b\\[[0-9;]*m/g,"").trim()).slice(0,8);console.log("Build summary:",JSON.stringify({errorMarkers:found,referencedFiles:Object.keys(files).slice(0,20),errorLines}));
+            const errorLines=lines.filter(x=>/error|Error|failed|Failed|Type error|Module not found/.test(x)).slice(0,8);
+            console.log("Build summary:",JSON.stringify({errorMarkers:found,errorLines}));
           '
 
           echo "Failed stages: $failures"
