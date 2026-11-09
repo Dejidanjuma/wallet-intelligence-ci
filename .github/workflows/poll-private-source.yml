@@ -35,11 +35,11 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${WI_READONLY_TOKEN}" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/Dejidanjuma/wallet-intelligence/commits/feat/wallet-scan-profit-reconciliation" \
+            "https://api.github.com/repos/Dejidanjuma/wallet-intelligence/commits/feat/argus-intelligence-expansion" \
             | jq -r '.sha')"
 
           if [[ ! "$latest_sha" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "Could not resolve the private branch commit SHA."
+            echo "Could not resolve the private feature branch commit SHA."
             exit 1
           fi
 
@@ -48,11 +48,11 @@ jobs:
           if [[ -f "$marker" ]]; then previous_sha="$(tr -d '[:space:]' < "$marker")"; fi
 
           if [[ "$latest_sha" == "$previous_sha" ]]; then
-            echo "No new private source commit. Nothing to dispatch."
+            echo "No new private feature-branch commit. Nothing to dispatch."
             exit 0
           fi
 
-          echo "New private source commit detected: $latest_sha"
+          echo "New private feature-branch commit detected: $latest_sha"
 
           payload="$(jq -n --arg sha "$latest_sha" \
             '{event_type:"wi-source-updated",client_payload:{sha:$sha}}')"
@@ -69,6 +69,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add "$marker"
-          git commit -m "ci: record dispatched private source commit"
+          git commit -m "ci: record dispatched private feature commit"
           git push
-          echo "Dispatched CI for private commit $latest_sha"
+          echo "Dispatched CI for private feature commit $latest_sha"
