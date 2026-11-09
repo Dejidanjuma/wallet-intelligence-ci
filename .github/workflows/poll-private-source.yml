@@ -1,8 +1,6 @@
 name: Poll private Wallet Intelligence source
 
 on:
-  schedule:
-    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -22,7 +20,7 @@ jobs:
         with:
           persist-credentials: true
 
-      - name: Detect and dispatch a new private commit
+      - name: Detect and dispatch the current private feature commit
         env:
           WI_READONLY_TOKEN: ${{ secrets.WI_READONLY_TOKEN }}
           GH_TOKEN: ${{ github.token }}
@@ -52,7 +50,7 @@ jobs:
             exit 0
           fi
 
-          echo "New private feature-branch commit detected: $latest_sha"
+          echo "Private feature-branch commit ready for verification: $latest_sha"
 
           payload="$(jq -n --arg sha "$latest_sha" \
             '{event_type:"wi-source-updated",client_payload:{sha:$sha}}')"
