@@ -37,59 +37,33 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install and verify with sanitized diagnostics
+      - name: Verify without publishing private diagnostics
         shell: bash
         run: |
           set -u
           cd private-source
-          set +e
           failures=0
-          run_logged() {
-            label="$1"; logfile="$2"; shift 2
-            "$@" > "$logfile" 2>&1
-            code=$?
-            if [ "$code" -eq 0 ]; then echo "$label: PASS"; else echo "$label: FAIL (exit $code)"; failures=$((failures + 1)); fi
-            return 0
+
+          run_stage() {
+            label="$1"
+            shift
+            logfile="$(mktemp)"
+            if "$@" >"$logfile" 2>&1; then
+              echo "$label: PASS"
+            else
+              code=$?
+              echo "$label: FAIL (exit $code)"
+              failures=$((failures + 1))
+            fi
+            rm -f "$logfile"
           }
 
-          run_logged "Lockfile regeneration" /tmp/wi-lock.log npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-          run_logged "Dependency installation" /tmp/wi-install.log npm ci --no-audit --no-fund
-          run_logged "Lint" /tmp/wi-lint.log npm run lint -- --format json --output-file /tmp/wi-lint.json
-          if [ -s /tmp/wi-lint.json ]; then
-            node -e 'const fs=require("fs");try{const d=JSON.parse(fs.readFileSync("/tmp/wi-lint.json","utf8"));const a={errors:0,warnings:0,rules:{},files:[]};for(const f of d){a.errors+=f.errorCount||0;a.warnings+=f.warningCount||0;const counts={};for(const m of f.messages||[])if(m.ruleId){a.rules[m.ruleId]=(a.rules[m.ruleId]||0)+1;counts[m.ruleId]=(counts[m.ruleId]||0)+1;}if(Object.keys(counts).length)a.files.push({file:String(f.filePath).replace(process.cwd()+"/",""),counts});}a.files.sort((x,y)=>Object.values(y.counts).reduce((p,q)=>p+q,0)-Object.values(x.counts).reduce((p,q)=>p+q,0));const diagnostics=d.flatMap(f=>(f.messages||[]).filter(m=>m.severity===2).map(m=>({file:String(f.filePath).replace(process.cwd()+"/",""),line:m.line,column:m.column,rule:m.ruleId,message:m.message}))).slice(0,120);console.log("Lint summary:",JSON.stringify({...a,files:a.files.slice(0,40),diagnostics}));}catch{console.log("Lint report parse failed");}'
-          fi
-
-          run_logged "Typecheck" /tmp/wi-tsc.log npm run typecheck -- --pretty false
-          node -e 'const fs=require("fs"),s=fs.readFileSync("/tmp/wi-tsc.log","utf8");console.log("Typecheck summary:",JSON.stringify({diagnostics:s.split(String.fromCharCode(10)).filter(x=>x.includes("error TS")).slice(0,8)}));'
-
-          run_logged "Unit tests" /tmp/wi-tests.log npm test -- --pool=forks --maxWorkers=1 --no-file-parallelism --reporter=json --outputFile=/tmp/wi-vitest.json
-          if [ -s /tmp/wi-vitest.json ]; then
-            node -e '
-              const fs=require("fs");
-              const clean=v=>String(v??"").replace(/(gh[pousr]_[A-Za-z0-9_]{20,}|Bearer\s+\S+|https?:\/\/[^\s]+\?[^\s]+)/g,"[redacted]").replace(/\/home\/runner\/work\/[^\s:]*/g,"[private-runner-path]").slice(0,700);
-              try {
-                const d=JSON.parse(fs.readFileSync("/tmp/wi-vitest.json","utf8"));
-                const files=d.testResults||[];let p=0,f=0;const failed=[];const suiteIssues=[];
-                for(const x of files){
-                  for(const t of x.assertionResults||[]){if(t.status==="passed")p++;if(t.status==="failed"){f++;failed.push({file:clean(x.name).split("/").pop(),test:clean(t.fullName||t.title),messages:(t.failureMessages||[]).map(clean).slice(0,2)});}}
-                  if(x.status!=="passed")suiteIssues.push({file:clean(x.name).split("/").pop(),status:x.status,assertionCount:(x.assertionResults||[]).length,error:clean(x.message||x.failureMessage||x.error),details:(x.assertionResults||[]).filter(t=>t.status==="failed").flatMap(t=>t.failureMessages||[]).map(clean).slice(0,3)});
-                }
-                console.log("Vitest summary:",JSON.stringify({success:d.success,numPassedTests:d.numPassedTests,numFailedTests:d.numFailedTests,numFailedSuites:d.numFailedSuites,numTotalTests:d.numTotalTests,files:files.length,passed:p,failed:f,failedTests:failed.slice(0,10),suiteIssues:suiteIssues.slice(0,12),topLevelErrors:(d.errors||[]).map(e=>({name:clean(e.name),message:clean(e.message),stack:clean(e.stack)})).slice(0,5)}));
-              } catch(e) { console.log("Vitest report parse failed:",clean(e.message)); }
-            '
-          else
-            echo "Vitest report: MISSING"
-          fi
-          node -e '
-            const fs=require("fs"),s=fs.readFileSync("/tmp/wi-tests.log","utf8");
-            const clean=x=>String(x).replace(/(gh[pousr]_[A-Za-z0-9_]{20,}|Bearer\s+\S+|https?:\/\/[^\s]+\?[^\s]+)/g,"[redacted]").replace(/\/home\/runner\/work\/[^\s:]*/g,"[private-runner-path]").slice(0,500);
-            const lines=s.split(String.fromCharCode(10));
-            console.log("Vitest process diagnostics:",JSON.stringify({logBytes:Buffer.byteLength(s),tail:lines.slice(-60).map(clean)}));
-          '
-
-          run_logged "Production build" /tmp/wi-build.log npm run build
-          node -e 'const fs=require("fs"),s=fs.readFileSync("/tmp/wi-build.log","utf8");const lines=s.split(String.fromCharCode(10));console.log("Build summary:",JSON.stringify({errorLines:lines.filter(x=>/error|Error|failed|Failed|Type error|Module not found/.test(x)).slice(0,8)}));'
+          # Lifecycle scripts are disabled to reduce install-time execution risk.
+          run_stage "Dependency installation" npm ci --ignore-scripts --no-audit --no-fund
+          run_stage "Lint" npm run lint
+          run_stage "Typecheck" npm run typecheck
+          run_stage "Unit tests" npm test -- --pool=forks --maxWorkers=1 --no-file-parallelism
+          run_stage "Production build" npm run build
 
           echo "Failed stages: $failures"
-          rm -f /tmp/wi-*.log /tmp/wi-lint.json /tmp/wi-vitest.json
           if [ "$failures" -gt 0 ]; then exit 1; fi
