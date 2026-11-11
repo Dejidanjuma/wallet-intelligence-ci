@@ -13,7 +13,7 @@ The verifier uses `persist-credentials: false`, disables install lifecycle scrip
 
 ## Workflows and permission boundaries
 
-- `private-source-ci.yml` is manually triggered or invoked by a repository-dispatch event. It checks out the requested private commit into a temporary runner and runs lint, typecheck, tests and build.
+- `private-source-ci.yml` is manually triggered or invoked by a repository-dispatch event. It checks out the requested private commit into a temporary runner and runs dependency audit, lint, typecheck, tests and build.
 - `poll-private-source.yml` is separately manual-only. Its workflow-scoped `GITHUB_TOKEN` has `contents: write` solely to update `.ci/last-seen-private-sha` in this controller and dispatch the validation event. The private source PAT remains read-only. Do not copy the write permission into the verifier workflow.
 - No workflow deploys, applies migrations, submits trades, signs wallets, or performs transfers.
 
