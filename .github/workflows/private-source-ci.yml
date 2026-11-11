@@ -60,6 +60,7 @@ jobs:
 
           # Lifecycle scripts are disabled to reduce install-time execution risk.
           run_stage "Dependency installation" npm ci --ignore-scripts --no-audit --no-fund
+          run_stage "Dependency vulnerability audit" npm audit --audit-level=high
           run_stage "Lint" npm run lint
           run_stage "Typecheck" npm run typecheck
           run_stage "Unit tests" npm test -- --pool=forks --maxWorkers=1 --no-file-parallelism
